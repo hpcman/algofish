@@ -1,4 +1,5 @@
 import os
+import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,6 +10,7 @@ from app.agents import run_tinyfish_agent
 from app.prompts import MASTER_TUTOR_PROMPT
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AlgoFish API", version="1.0")
 
@@ -36,15 +38,22 @@ async def master_learning_pipeline(request: LearnRequest):
     if not scraped_data:
         raise HTTPException(status_code=500, detail="TinyFish failed to extract data.")
 
-    # 2. OpenAI Processing (The God Mode Prompt)
+    if not os.getenv("OPENAI_API_KEY"):
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is missing. Set it in backend/.env.")
+
+    # 2. OpenAI Processing (The Master Tutor with extended thinking)
     try:
-        completion = client.chat.completions.create(
+        response = client.responses.create(
             model="gpt-5.4",
-            messages=[
+            input=[
                 {"role": "system", "content": MASTER_TUTOR_PROMPT},
-                {"role": "user", "content": f"Here is the extracted data for the user's query:\n{scraped_data}"}
-            ]
+                {"role": "user", "content": f"Here is the extracted data for the user's query:\n{scraped_data}"},
+            ],
+            reasoning={
+                "effort": "high"
+            },
         )
-        return {"result": completion.choices[0].message.content}
+        return {"result": response.output_text}
     except Exception as e:
+        logger.exception("OpenAI request failed")
         raise HTTPException(status_code=500, detail=f"OpenAI Error: {str(e)}")
